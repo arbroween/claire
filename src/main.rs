@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
 
+mod vm;
+
 #[derive(Clone, Debug)]
 struct Location {
     offset: usize,
