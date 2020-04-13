@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
 
+mod reader;
 mod vm;
 
 #[derive(Clone, Debug)]
