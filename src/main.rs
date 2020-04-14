@@ -191,7 +191,7 @@ fn parse_atom<'src>(src: &'src str, start: &Location, tokens: &mut Vec<Token>) -
 }
 
 fn parse_close_paren(src: &str, start: &Location, tokens: &mut Vec<Token>) -> Option<usize> {
-    if src.chars().nth(0) == Some(')') {
+    if src.starts_with(')') {
         tokens.push(Token::close_paren(start.clone()));
         Some(1)
     } else {
@@ -213,7 +213,7 @@ fn parse_line_comment(src: &str, start: &Location, tokens: &mut Vec<Token>) -> O
 }
 
 fn parse_open_paren(src: &str, start: &Location, tokens: &mut Vec<Token>) -> Option<usize> {
-    if src.chars().nth(0) == Some('(') {
+    if src.starts_with('(') {
         tokens.push(Token::open_paren(start.clone()));
         Some(1)
     } else {
@@ -944,7 +944,7 @@ impl Interpreter {
                     Some(tail_expr) => {
                         exprs.reverse();
                         if let Some(err) = exprs.into_iter().find_map(|expr| self.execute(env, expr).err()) {
-                            return Err(format!(
+                            Err(format!(
                                 "Error when evaluating expressions in begin: {}",
                                 err
                             ))
@@ -952,7 +952,7 @@ impl Interpreter {
                             self.execute(env, tail_expr)
                         }
                     }
-                    None => return Ok(Value::NULL)
+                    None => Ok(Value::NULL)
                 }
             }
             Expr::Call {

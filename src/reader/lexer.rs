@@ -123,7 +123,7 @@ impl Lexer {
                 None => {
                     return Err(format!(
                         "reader: unknown character '{}'",
-                        remaining.chars().nth(0).unwrap(),
+                        remaining.chars().next().unwrap(),
                     ))
                 }
             }
@@ -161,7 +161,7 @@ impl Lexer {
 
     fn parse_integer(src: &str, tokens: &mut Vec<Token>, current: &Location) -> Option<usize> {
         let mut chars = src.chars();
-        if chars.nth(0).unwrap().is_numeric() {
+        if chars.next().unwrap().is_numeric() {
             let parsed = chars.take_while(|c| c.is_numeric()).count();
 
             let mut end = current.clone();
@@ -180,7 +180,7 @@ impl Lexer {
 
     fn parse_line_comment(src: &str, tokens: &mut Vec<Token>, current: &Location) -> Option<usize> {
         if src.starts_with(';') {
-            let parsed = src.lines().nth(0).map(str::len).unwrap_or(0);
+            let parsed = src.lines().next().map(str::len).unwrap_or(0);
             let mut end = current.clone();
             end.offset += parsed;
 
@@ -206,7 +206,7 @@ impl Lexer {
 
     fn parse_symbol(src: &str, tokens: &mut Vec<Token>, current: &Location) -> Option<usize> {
         let mut chars = src.chars();
-        if chars.nth(0).unwrap().is_alphabetic() {
+        if chars.next().unwrap().is_alphabetic() {
             let parsed = chars
                 .take_while(|c| c.is_alphanumeric() || ['-', '!'].contains(c))
                 .count();
