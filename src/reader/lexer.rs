@@ -1,18 +1,26 @@
+use std::fmt;
+
 type Result<T> = std::result::Result<T, String>;
 
 #[derive(Clone, Debug, PartialEq)]
-struct Location {
+pub(super) struct Location {
     offset: usize,
 }
 
 impl Location {
-    fn new(offset: usize) -> Self {
+    pub(super) fn new(offset: usize) -> Self {
         Self { offset }
     }
 }
 
+impl fmt::Display for Location {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "offset: {}", self.offset)
+    }
+}
+
 #[derive(Debug, PartialEq)]
-enum Token {
+pub(super) enum Token {
     Symbol {
         name: String,
         start: Location,
@@ -90,10 +98,10 @@ impl Token {
     }
 }
 
-struct Lexer;
+pub(super) struct Lexer;
 
 impl Lexer {
-    fn from_str(src: &str) -> Result<Vec<Token>> {
+    pub(super) fn from_str(src: &str) -> Result<Vec<Token>> {
         let mut tokens = Vec::new();
         let mut current = Location::new(0);
 
@@ -247,42 +255,46 @@ impl Lexer {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
 
-    fn end_list(start: usize) -> Token {
+    pub(in crate::reader) fn end_list(start: usize) -> Token {
         Token::end_list(Location::new(start))
     }
 
-    fn end_map(start: usize) -> Token {
+    pub(in crate::reader) fn end_map(start: usize) -> Token {
         Token::end_map(Location::new(start))
     }
 
-    fn end_vector(start: usize) -> Token {
+    pub(in crate::reader) fn end_vector(start: usize) -> Token {
         Token::end_vector(Location::new(start))
     }
 
-    fn integer(value: impl Into<String>, start: usize, end: usize) -> Token {
+    pub(in crate::reader) fn integer(value: impl Into<String>, start: usize, end: usize) -> Token {
         Token::integer(value.into(), Location::new(start), Location::new(end))
     }
 
-    fn line_comment(comment: impl Into<String>, start: usize, end: usize) -> Token {
+    pub(in crate::reader) fn line_comment(
+        comment: impl Into<String>,
+        start: usize,
+        end: usize,
+    ) -> Token {
         Token::line_comment(comment.into(), Location::new(start), Location::new(end))
     }
 
-    fn start_list(start: usize) -> Token {
+    pub(in crate::reader) fn start_list(start: usize) -> Token {
         Token::start_list(Location::new(start))
     }
 
-    fn start_map(start: usize) -> Token {
+    pub(in crate::reader) fn start_map(start: usize) -> Token {
         Token::start_map(Location::new(start))
     }
 
-    fn start_vector(start: usize) -> Token {
+    pub(in crate::reader) fn start_vector(start: usize) -> Token {
         Token::start_vector(Location::new(start))
     }
 
-    fn symbol(name: impl Into<String>, start: usize, end: usize) -> Token {
+    pub(in crate::reader) fn symbol(name: impl Into<String>, start: usize, end: usize) -> Token {
         Token::symbol(name.into(), Location::new(start), Location::new(end))
     }
 
