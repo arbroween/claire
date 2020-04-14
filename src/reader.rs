@@ -269,4 +269,27 @@ mod tests {
 
         assert_eq!(Reader::from_str(src), Ok(result));
     }
+
+    #[test]
+    fn test_map_literal() {
+        let src = "{:zero 0 :one 1 :twenty-two 22 :three-hundred-and-thirty-three 333}";
+
+        assert_eq!(
+            Reader::from_str(src),
+            Ok(vec![parser::map(
+                vec![
+                    parser::keyword("zero", 1, 6),
+                    parser::integer(0, 7, 8),
+                    parser::keyword("one", 9, 13),
+                    parser::integer(1, 14, 15),
+                    parser::keyword("twenty-two", 16, 27),
+                    parser::integer(22, 28, 30),
+                    parser::keyword("three-hundred-and-thirty-three", 31, 62),
+                    parser::integer(333, 63, 66),
+                ],
+                0,
+                66
+            )])
+        );
+    }
 }

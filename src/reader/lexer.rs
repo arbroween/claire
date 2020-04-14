@@ -21,11 +21,6 @@ impl fmt::Display for Location {
 
 #[derive(Debug, PartialEq)]
 pub(super) enum Token {
-    Symbol {
-        name: String,
-        start: Location,
-        end: Location,
-    },
     EndList {
         start: Location,
     },
@@ -37,6 +32,11 @@ pub(super) enum Token {
     },
     Integer {
         value: String,
+        start: Location,
+        end: Location,
+    },
+    Keyword {
+        name: String,
         start: Location,
         end: Location,
     },
@@ -53,6 +53,11 @@ pub(super) enum Token {
     },
     StartVector {
         start: Location,
+    },
+    Symbol {
+        name: String,
+        start: Location,
+        end: Location,
     },
 }
 
@@ -71,6 +76,10 @@ impl Token {
 
     fn integer(value: String, start: Location, end: Location) -> Self {
         Self::Integer { value, start, end }
+    }
+
+    fn keyword(name: String, start: Location, end: Location) -> Self {
+        Self::Keyword { name, start, end }
     }
 
     fn line_comment(comment: String, start: Location, end: Location) -> Self {
@@ -116,6 +125,7 @@ impl Lexer {
                 .or_else(|| Self::parse_end_vector(remaining, &mut tokens, &current))
                 .or_else(|| Self::parse_symbol(remaining, &mut tokens, &current))
                 .or_else(|| Self::parse_integer(remaining, &mut tokens, &current))
+                .or_else(|| Self::parse_keyword(remaining, &mut tokens, &current))
                 .or_else(|| Self::parse_line_comment(remaining, &mut tokens, &current));
 
             match parsed {
@@ -169,6 +179,28 @@ impl Lexer {
 
             tokens.push(Token::integer(
                 src[..parsed + 1].to_owned(),
+                current.clone(),
+                end,
+            ));
+            Some(parsed + 1)
+        } else {
+            None
+        }
+    }
+
+    fn parse_keyword(src: &str, tokens: &mut Vec<Token>, current: &Location) -> Option<usize> {
+        if src.starts_with(':') {
+            let parsed = src
+                .chars()
+                .skip(1)
+                .take_while(|c| c.is_alphanumeric() || ['-', '!'].contains(c))
+                .count();
+
+            let mut end = current.clone();
+            end.offset += parsed + 1;
+
+            tokens.push(Token::keyword(
+                src[1..parsed + 1].to_owned(),
                 current.clone(),
                 end,
             ));
@@ -274,6 +306,10 @@ pub(super) mod tests {
         Token::integer(value.into(), Location::new(start), Location::new(end))
     }
 
+    pub(in crate::reader) fn keyword(value: impl Into<String>, start: usize, end: usize) -> Token {
+        Token::keyword(value.into(), Location::new(start), Location::new(end))
+    }
+
     pub(in crate::reader) fn line_comment(
         comment: impl Into<String>,
         start: usize,
@@ -340,6 +376,24 @@ pub(super) mod tests {
         assert_eq!(
             Lexer::from_str("456 789"),
             Ok(vec![integer("456", 0, 3), integer("789", 4, 7)])
+        );
+    }
+
+    #[test]
+    fn test_keyword() {
+        assert_eq!(
+            Lexer::from_str(":keyword"),
+            Ok(vec![keyword("keyword", 0, 8)])
+        );
+
+        assert_eq!(
+            Lexer::from_str(":abc123"),
+            Ok(vec![keyword("abc123", 0, 7)])
+        );
+
+        assert_eq!(
+            Lexer::from_str(":1-2-3 :4-5-6"),
+            Ok(vec![keyword("1-2-3", 0, 6), keyword("4-5-6", 7, 13)])
         );
     }
 

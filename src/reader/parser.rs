@@ -24,6 +24,7 @@ impl fmt::Display for Span {
 #[derive(Debug, PartialEq)]
 pub(super) enum ReaderData {
     Integer { span: Span, value: i32 },
+    Keyword { span: Span, name: String },
     LineComment { span: Span, comment: String },
     List { span: Span, items: Vec<Self> },
     Map { span: Span, items: Vec<Self> },
@@ -34,6 +35,10 @@ pub(super) enum ReaderData {
 impl ReaderData {
     fn integer(span: Span, value: i32) -> Self {
         Self::Integer { span, value }
+    }
+
+    fn keyword(span: Span, name: String) -> Self {
+        Self::Keyword { span, name }
     }
 
     fn line_comment(span: Span, comment: String) -> Self {
@@ -48,12 +53,12 @@ impl ReaderData {
         Self::Map { span, items }
     }
 
-    fn vector(span: Span, items: Vec<Self>) -> Self {
-        Self::Vector { span, items }
-    }
-
     fn symbol(span: Span, name: String) -> Self {
         Self::Symbol { span, name }
+    }
+
+    fn vector(span: Span, items: Vec<Self>) -> Self {
+        Self::Vector { span, items }
     }
 
     fn fmt_list(f: &mut fmt::Formatter<'_>, _: &Span, items: &[ReaderData]) -> fmt::Result {
@@ -98,6 +103,7 @@ impl ReaderData {
     fn span(&self) -> &Span {
         match self {
             Self::Integer { span, .. } => span,
+            Self::Keyword { span, .. } => span,
             Self::LineComment { span, .. } => span,
             Self::List { span, .. } => span,
             Self::Map { span, .. } => span,
@@ -111,6 +117,7 @@ impl fmt::Display for ReaderData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Integer { value, .. } => write!(f, "{}", value),
+            Self::Keyword { name, .. } => write!(f, ":{}", name),
             Self::LineComment { comment, .. } => write!(f, ";{}", comment),
             Self::List { span, items } => Self::fmt_list(f, span, items),
             Self::Map { span, items } => Self::fmt_map(f, span, items),
@@ -146,6 +153,10 @@ impl Parser {
                 tokens.reverse();
                 Self::parse_integer(value, start, end)
             }
+            Some(Token::Keyword { name, start, end }) => {
+                tokens.reverse();
+                Self::parse_keyword(name, start, end)
+            }
             Some(Token::LineComment {
                 comment,
                 start,
@@ -178,6 +189,10 @@ impl Parser {
         }
     }
 
+    fn parse_keyword(name: String, start: Location, end: Location) -> Result<ReaderData> {
+        Ok(ReaderData::keyword(Span::new(start, end), name))
+    }
+
     fn parse_line_comment(comment: String, start: Location, end: Location) -> Result<ReaderData> {
         Ok(ReaderData::line_comment(Span::new(start, end), comment))
     }
@@ -193,6 +208,9 @@ impl Parser {
                 }
                 Token::Integer { value, start, end } => {
                     items.push(Self::parse_integer(value, start, end)?)
+                }
+                Token::Keyword { name, start, end } => {
+                    items.push(Self::parse_keyword(name, start, end)?)
                 }
                 Token::EndList { start: end } => {
                     tokens.reverse();
@@ -243,6 +261,9 @@ impl Parser {
                 }
                 Token::Integer { value, start, end } => {
                     items.push(Self::parse_integer(value, start, end)?)
+                }
+                Token::Keyword { name, start, end } => {
+                    items.push(Self::parse_keyword(name, start, end)?)
                 }
                 Token::EndMap { start: end } => {
                     tokens.reverse();
@@ -303,6 +324,9 @@ impl Parser {
                 Token::Integer { value, start, end } => {
                     items.push(Self::parse_integer(value, start, end)?)
                 }
+                Token::Keyword { name, start, end } => {
+                    items.push(Self::parse_keyword(name, start, end)?)
+                }
                 Token::EndVector { start: end } => {
                     tokens.reverse();
                     return Ok(ReaderData::vector(Span::new(start, end), items));
@@ -351,6 +375,17 @@ pub(in crate::reader) mod tests {
         ReaderData::integer(Span::new(Location::new(start), Location::new(end)), value)
     }
 
+    pub(in crate::reader) fn keyword(
+        name: impl Into<String>,
+        start: usize,
+        end: usize,
+    ) -> ReaderData {
+        ReaderData::keyword(
+            Span::new(Location::new(start), Location::new(end)),
+            name.into(),
+        )
+    }
+
     pub(in crate::reader) fn line_comment(
         comment: impl Into<String>,
         start: usize,
@@ -396,6 +431,25 @@ pub(in crate::reader) mod tests {
 
         let mut tokens = vec![token::integer("123", 5, 8)];
         assert_eq!(Parser::parse(&mut tokens), Ok(integer(123, 5, 8)));
+    }
+
+    #[test]
+    fn test_keyword() {
+        let mut tokens = vec![token::keyword("keyword", 1, 8)];
+        assert_eq!(Parser::parse(&mut tokens), Ok(keyword("keyword", 1, 8)));
+
+        let mut tokens = vec![
+            token::keyword("too", 7, 11),
+            token::keyword("many", 13, 18),
+            token::keyword("keywords", 21, 30),
+            token::keyword("right", 31, 37),
+            token::keyword("now", 39, 43),
+        ];
+        assert_eq!(Parser::parse(&mut tokens), Ok(keyword("too", 7, 11)));
+        assert_eq!(Parser::parse(&mut tokens), Ok(keyword("many", 13, 18)));
+        assert_eq!(Parser::parse(&mut tokens), Ok(keyword("keywords", 21, 30)));
+        assert_eq!(Parser::parse(&mut tokens), Ok(keyword("right", 31, 37)));
+        assert_eq!(Parser::parse(&mut tokens), Ok(keyword("now", 39, 43)));
     }
 
     #[test]
