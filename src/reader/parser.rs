@@ -4,7 +4,7 @@ use std::fmt;
 type Result<T> = std::result::Result<T, String>;
 
 #[derive(Debug, PartialEq)]
-struct Span {
+pub(super) struct Span {
     start: Location,
     end: Location,
 }
@@ -22,7 +22,7 @@ impl fmt::Display for Span {
 }
 
 #[derive(Debug, PartialEq)]
-enum ReaderData {
+pub(super) enum ReaderData {
     Integer { span: Span, value: i32 },
     LineComment { span: Span, comment: String },
     List { span: Span, items: Vec<Self> },
@@ -120,10 +120,10 @@ impl fmt::Display for ReaderData {
     }
 }
 
-struct Parser;
+pub(super) struct Parser;
 
 impl Parser {
-    fn parse(tokens: &mut Vec<Token>) -> Result<ReaderData> {
+    pub(super) fn parse(tokens: &mut Vec<Token>) -> Result<ReaderData> {
         tokens.reverse();
         match tokens.pop() {
             Some(Token::StartList { start }) => {
@@ -343,37 +343,49 @@ impl Parser {
 }
 
 #[cfg(test)]
-mod tests {
+pub(in crate::reader) mod tests {
     use super::super::lexer::tests::{self as token};
     use super::*;
 
-    fn integer(value: i32, start: usize, end: usize) -> ReaderData {
+    pub(in crate::reader) fn integer(value: i32, start: usize, end: usize) -> ReaderData {
         ReaderData::integer(Span::new(Location::new(start), Location::new(end)), value)
     }
 
-    fn line_comment(comment: impl Into<String>, start: usize, end: usize) -> ReaderData {
+    pub(in crate::reader) fn line_comment(
+        comment: impl Into<String>,
+        start: usize,
+        end: usize,
+    ) -> ReaderData {
         ReaderData::line_comment(
             Span::new(Location::new(start), Location::new(end)),
             comment.into(),
         )
     }
 
-    fn list(items: Vec<ReaderData>, start: usize, end: usize) -> ReaderData {
+    pub(in crate::reader) fn list(items: Vec<ReaderData>, start: usize, end: usize) -> ReaderData {
         ReaderData::list(Span::new(Location::new(start), Location::new(end)), items)
     }
 
-    fn map(items: Vec<ReaderData>, start: usize, end: usize) -> ReaderData {
+    pub(in crate::reader) fn map(items: Vec<ReaderData>, start: usize, end: usize) -> ReaderData {
         ReaderData::map(Span::new(Location::new(start), Location::new(end)), items)
     }
 
-    fn symbol(name: impl Into<String>, start: usize, end: usize) -> ReaderData {
+    pub(in crate::reader) fn symbol(
+        name: impl Into<String>,
+        start: usize,
+        end: usize,
+    ) -> ReaderData {
         ReaderData::symbol(
             Span::new(Location::new(start), Location::new(end)),
             name.into(),
         )
     }
 
-    fn vector(items: Vec<ReaderData>, start: usize, end: usize) -> ReaderData {
+    pub(in crate::reader) fn vector(
+        items: Vec<ReaderData>,
+        start: usize,
+        end: usize,
+    ) -> ReaderData {
         ReaderData::vector(Span::new(Location::new(start), Location::new(end)), items)
     }
 
