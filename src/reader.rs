@@ -27,6 +27,27 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_concat_string() {
+        let src = r#"(str "test, " "micro, " 1 2 3)"#;
+
+        assert_eq!(
+            Reader::from_str(src),
+            Ok(vec![parser::list(
+                vec![
+                    parser::symbol("str", 1, 4),
+                    parser::string("test, ", 5, 13),
+                    parser::string("micro, ", 14, 23),
+                    parser::integer(1, 24, 25),
+                    parser::integer(2, 26, 27),
+                    parser::integer(3, 28, 29),
+                ],
+                0,
+                29
+            )])
+        );
+    }
+
+    #[test]
     fn test_find_roots() {
         let src = "
             ; given a vector of coefficients,

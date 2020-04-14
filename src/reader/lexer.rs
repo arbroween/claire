@@ -54,6 +54,11 @@ pub(super) enum Token {
     StartVector {
         start: Location,
     },
+    String {
+        value: String,
+        start: Location,
+        end: Location,
+    },
     Symbol {
         name: String,
         start: Location,
@@ -102,6 +107,10 @@ impl Token {
         Self::StartVector { start }
     }
 
+    fn string(value: String, start: Location, end: Location) -> Self {
+        Self::String { value, start, end }
+    }
+
     fn symbol(name: String, start: Location, end: Location) -> Self {
         Self::Symbol { name, start, end }
     }
@@ -126,6 +135,7 @@ impl Lexer {
                 .or_else(|| Self::parse_symbol(remaining, &mut tokens, &current))
                 .or_else(|| Self::parse_integer(remaining, &mut tokens, &current))
                 .or_else(|| Self::parse_keyword(remaining, &mut tokens, &current))
+                .or_else(|| Self::parse_string(remaining, &mut tokens, &current))
                 .or_else(|| Self::parse_line_comment(remaining, &mut tokens, &current));
 
             match parsed {
@@ -236,6 +246,24 @@ impl Lexer {
         }
     }
 
+    fn parse_string(src: &str, tokens: &mut Vec<Token>, current: &Location) -> Option<usize> {
+        if src.starts_with('"') {
+            let parsed = src.chars().skip(1).take_while(|c| *c != '"').count();
+
+            let mut end = current.clone();
+            end.offset += parsed + 2;
+
+            tokens.push(Token::string(
+                src[1..parsed + 1].to_owned(),
+                current.clone(),
+                end,
+            ));
+            Some(parsed + 2)
+        } else {
+            None
+        }
+    }
+
     fn parse_symbol(src: &str, tokens: &mut Vec<Token>, current: &Location) -> Option<usize> {
         let mut chars = src.chars();
         if chars.next().unwrap().is_alphabetic() {
@@ -306,8 +334,8 @@ pub(super) mod tests {
         Token::integer(value.into(), Location::new(start), Location::new(end))
     }
 
-    pub(in crate::reader) fn keyword(value: impl Into<String>, start: usize, end: usize) -> Token {
-        Token::keyword(value.into(), Location::new(start), Location::new(end))
+    pub(in crate::reader) fn keyword(name: impl Into<String>, start: usize, end: usize) -> Token {
+        Token::keyword(name.into(), Location::new(start), Location::new(end))
     }
 
     pub(in crate::reader) fn line_comment(
@@ -328,6 +356,10 @@ pub(super) mod tests {
 
     pub(in crate::reader) fn start_vector(start: usize) -> Token {
         Token::start_vector(Location::new(start))
+    }
+
+    pub(in crate::reader) fn string(value: impl Into<String>, start: usize, end: usize) -> Token {
+        Token::string(value.into(), Location::new(start), Location::new(end))
     }
 
     pub(in crate::reader) fn symbol(name: impl Into<String>, start: usize, end: usize) -> Token {
@@ -472,6 +504,26 @@ pub(super) mod tests {
         assert_eq!(
             Lexer::from_str(" [ ["),
             Ok(vec![start_vector(1), start_vector(3)])
+        );
+    }
+
+    #[test]
+    fn test_string() {
+        assert_eq!(Lexer::from_str(r#""""#), Ok(vec![string("", 0, 2)]));
+
+        assert_eq!(
+            Lexer::from_str(r#""string""#),
+            Ok(vec![string("string", 0, 8)])
+        );
+
+        assert_eq!(
+            Lexer::from_str(r#""abc 123""#),
+            Ok(vec![string("abc 123", 0, 9)])
+        );
+
+        assert_eq!(
+            Lexer::from_str(r#""hello" "world""#),
+            Ok(vec![string("hello", 0, 7), string("world", 8, 15)])
         );
     }
 

@@ -28,6 +28,7 @@ pub(super) enum ReaderData {
     LineComment { span: Span, comment: String },
     List { span: Span, items: Vec<Self> },
     Map { span: Span, items: Vec<Self> },
+    String { span: Span, value: String },
     Symbol { span: Span, name: String },
     Vector { span: Span, items: Vec<Self> },
 }
@@ -51,6 +52,10 @@ impl ReaderData {
 
     fn map(span: Span, items: Vec<Self>) -> Self {
         Self::Map { span, items }
+    }
+
+    fn string(span: Span, value: String) -> Self {
+        Self::String { span, value }
     }
 
     fn symbol(span: Span, name: String) -> Self {
@@ -107,6 +112,7 @@ impl ReaderData {
             Self::LineComment { span, .. } => span,
             Self::List { span, .. } => span,
             Self::Map { span, .. } => span,
+            Self::String { span, .. } => span,
             Self::Symbol { span, .. } => span,
             Self::Vector { span, .. } => span,
         }
@@ -121,6 +127,7 @@ impl fmt::Display for ReaderData {
             Self::LineComment { comment, .. } => write!(f, ";{}", comment),
             Self::List { span, items } => Self::fmt_list(f, span, items),
             Self::Map { span, items } => Self::fmt_map(f, span, items),
+            Self::String { value, .. } => write!(f, "\"{}\"", value),
             Self::Symbol { name, .. } => write!(f, "{}", name),
             Self::Vector { span, items } => Self::fmt_vector(f, span, items),
         }
@@ -156,6 +163,10 @@ impl Parser {
             Some(Token::Keyword { name, start, end }) => {
                 tokens.reverse();
                 Self::parse_keyword(name, start, end)
+            }
+            Some(Token::String { value, start, end }) => {
+                tokens.reverse();
+                Self::parse_string(value, start, end)
             }
             Some(Token::LineComment {
                 comment,
@@ -212,6 +223,9 @@ impl Parser {
                 Token::Keyword { name, start, end } => {
                     items.push(Self::parse_keyword(name, start, end)?)
                 }
+                Token::String { value, start, end } => {
+                    items.push(Self::parse_string(value, start, end)?)
+                }
                 Token::EndList { start: end } => {
                     tokens.reverse();
                     return Ok(ReaderData::list(Span::new(start, end), items));
@@ -265,6 +279,9 @@ impl Parser {
                 Token::Keyword { name, start, end } => {
                     items.push(Self::parse_keyword(name, start, end)?)
                 }
+                Token::String { value, start, end } => {
+                    items.push(Self::parse_string(value, start, end)?)
+                }
                 Token::EndMap { start: end } => {
                     tokens.reverse();
                     if items.len() % 2 == 0 {
@@ -308,6 +325,10 @@ impl Parser {
         Err("ParseError: expected '}', found end of input".to_owned())
     }
 
+    fn parse_string(value: String, start: Location, end: Location) -> Result<ReaderData> {
+        Ok(ReaderData::string(Span::new(start, end), value))
+    }
+
     fn parse_symbol(name: String, start: Location, end: Location) -> Result<ReaderData> {
         Ok(ReaderData::symbol(Span::new(start, end), name))
     }
@@ -326,6 +347,9 @@ impl Parser {
                 }
                 Token::Keyword { name, start, end } => {
                     items.push(Self::parse_keyword(name, start, end)?)
+                }
+                Token::String { value, start, end } => {
+                    items.push(Self::parse_string(value, start, end)?)
                 }
                 Token::EndVector { start: end } => {
                     tokens.reverse();
@@ -403,6 +427,17 @@ pub(in crate::reader) mod tests {
 
     pub(in crate::reader) fn map(items: Vec<ReaderData>, start: usize, end: usize) -> ReaderData {
         ReaderData::map(Span::new(Location::new(start), Location::new(end)), items)
+    }
+
+    pub(in crate::reader) fn string(
+        value: impl Into<String>,
+        start: usize,
+        end: usize,
+    ) -> ReaderData {
+        ReaderData::string(
+            Span::new(Location::new(start), Location::new(end)),
+            value.into(),
+        )
     }
 
     pub(in crate::reader) fn symbol(
@@ -588,6 +623,34 @@ pub(in crate::reader) mod tests {
                 14
             ))
         );
+    }
+
+    #[test]
+    fn test_string() {
+        let mut tokens = vec![token::string("", 0, 2)];
+        assert_eq!(Parser::parse(&mut tokens), Ok(string("", 0, 2)));
+
+        let mut tokens = vec![token::string("string", 0, 8)];
+        assert_eq!(Parser::parse(&mut tokens), Ok(string("string", 0, 8)));
+
+        let mut tokens = vec![
+            token::string("one", 7, 12),
+            token::string("string", 14, 22),
+            token::string("then", 25, 31),
+            token::string("a", 34, 37),
+            token::string("second", 39, 47),
+            token::string("finally", 48, 57),
+            token::string("a", 61, 64),
+            token::string("third", 66, 73),
+        ];
+        assert_eq!(Parser::parse(&mut tokens), Ok(string("one", 7, 12)));
+        assert_eq!(Parser::parse(&mut tokens), Ok(string("string", 14, 22)));
+        assert_eq!(Parser::parse(&mut tokens), Ok(string("then", 25, 31)));
+        assert_eq!(Parser::parse(&mut tokens), Ok(string("a", 34, 37)));
+        assert_eq!(Parser::parse(&mut tokens), Ok(string("second", 39, 47)));
+        assert_eq!(Parser::parse(&mut tokens), Ok(string("finally", 48, 57)));
+        assert_eq!(Parser::parse(&mut tokens), Ok(string("a", 61, 64)));
+        assert_eq!(Parser::parse(&mut tokens), Ok(string("third", 66, 73)));
     }
 
     #[test]
