@@ -2,13 +2,13 @@ use std::fmt;
 
 type Result<T> = std::result::Result<T, String>;
 
-#[derive(Clone, Debug, PartialEq)]
-pub(super) struct Location {
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub(crate) struct Location {
     offset: usize,
 }
 
 impl Location {
-    pub(super) fn new(offset: usize) -> Self {
+    pub(crate) fn new(offset: usize) -> Self {
         Self { offset }
     }
 }

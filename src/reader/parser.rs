@@ -3,14 +3,14 @@ use std::fmt;
 
 type Result<T> = std::result::Result<T, String>;
 
-#[derive(Debug, PartialEq)]
-pub(super) struct Span {
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub(crate) struct Span {
     start: Location,
     end: Location,
 }
 
 impl Span {
-    fn new(start: Location, end: Location) -> Self {
+    pub(crate) fn new(start: Location, end: Location) -> Self {
         Self { start, end }
     }
 }
@@ -21,8 +21,8 @@ impl fmt::Display for Span {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub(super) enum ReaderData {
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum ReaderData {
     Integer { span: Span, value: i32 },
     Keyword { span: Span, name: String },
     LineComment { span: Span, comment: String },
@@ -105,7 +105,7 @@ impl ReaderData {
         write!(f, "{}", output)
     }
 
-    fn span(&self) -> &Span {
+    pub(crate) fn span(&self) -> &Span {
         match self {
             Self::Integer { span, .. } => span,
             Self::Keyword { span, .. } => span,

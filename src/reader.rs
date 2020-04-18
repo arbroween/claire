@@ -1,15 +1,17 @@
 use self::lexer::Lexer;
-use self::parser::{Parser, ReaderData};
+pub(crate) use self::lexer::Location;
+use self::parser::Parser;
+pub(crate) use self::parser::{ReaderData, Span};
 
 mod lexer;
 mod parser;
 
 type Result<T> = std::result::Result<T, String>;
 
-struct Reader;
+pub(crate) struct Reader;
 
 impl Reader {
-    fn from_str(src: &str) -> Result<Vec<ReaderData>> {
+    pub(crate) fn from_str(src: &str) -> Result<Vec<ReaderData>> {
         let mut data: Vec<ReaderData> = Vec::new();
 
         let mut tokens = Lexer::from_str(src)?;
