@@ -1,7 +1,8 @@
 use super::lexer::{Location, Token};
 use std::fmt;
+use std::string::String as RString;
 
-type Result<T> = std::result::Result<T, String>;
+type Result<T> = std::result::Result<T, RString>;
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(crate) struct Span {
@@ -22,28 +23,151 @@ impl fmt::Display for Span {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Comment {
+    span: Span,
+    comment: RString,
+}
+
+impl Comment {
+    fn new(span: Span, comment: RString) -> Self {
+        Self { span, comment }
+    }
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub(crate) struct Keyword {
+    span: Span,
+    name: RString,
+}
+
+impl Keyword {
+    pub(crate) fn new(span: Span, name: RString) -> Self {
+        Self { span, name }
+    }
+
+    fn span(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl fmt::Display for Keyword {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, ":{}", self.name)
+    }
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub(crate) struct Integer {
+    span: Span,
+    value: i32,
+}
+
+impl Integer {
+    pub(crate) fn new(span: Span, value: i32) -> Self {
+        Self { span, value }
+    }
+
+    fn span(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl fmt::Display for Integer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.value)
+    }
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub(crate) struct String {
+    span: Span,
+    value: RString,
+}
+
+impl String {
+    pub(crate) fn new(span: Span, value: RString) -> Self {
+        Self { span, value }
+    }
+
+    fn span(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl fmt::Display for String {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "\"{}\"", self.value)
+    }
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub(crate) struct Symbol {
+    span: Span,
+    name: RString,
+}
+
+impl Symbol {
+    pub(crate) fn new(span: Span, name: RString) -> Self {
+        Self { span, name }
+    }
+
+    pub(crate) fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn span(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl fmt::Display for Symbol {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) enum ReaderData {
-    Integer { span: Span, value: i32 },
-    Keyword { span: Span, name: String },
-    LineComment { span: Span, comment: String },
-    List { span: Span, items: Vec<Self> },
-    Map { span: Span, items: Vec<Self> },
-    String { span: Span, value: String },
-    Symbol { span: Span, name: String },
-    Vector { span: Span, items: Vec<Self> },
+    Commented {
+        comments: Vec<Comment>,
+        data: Box<Self>,
+    },
+    Integer(Integer),
+    Keyword(Keyword),
+    List {
+        span: Span,
+        items: Vec<Self>,
+    },
+    Map {
+        span: Span,
+        items: Vec<Self>,
+    },
+    String(String),
+    Symbol(Symbol),
+    Vector {
+        span: Span,
+        items: Vec<Self>,
+    },
 }
 
 impl ReaderData {
+    fn commented(data: Self, comments: &mut Vec<Comment>) -> Self {
+        if comments.is_empty() {
+            data
+        } else {
+            Self::Commented {
+                comments: comments.drain(..).collect(),
+                data: Box::new(data),
+            }
+        }
+    }
+
     fn integer(span: Span, value: i32) -> Self {
-        Self::Integer { span, value }
+        Self::Integer(Integer::new(span, value))
     }
 
-    fn keyword(span: Span, name: String) -> Self {
-        Self::Keyword { span, name }
-    }
-
-    fn line_comment(span: Span, comment: String) -> Self {
-        Self::LineComment { span, comment }
+    fn keyword(span: Span, name: RString) -> Self {
+        Self::Keyword(Keyword::new(span, name))
     }
 
     fn list(span: Span, items: Vec<Self>) -> Self {
@@ -54,12 +178,12 @@ impl ReaderData {
         Self::Map { span, items }
     }
 
-    fn string(span: Span, value: String) -> Self {
-        Self::String { span, value }
+    fn string(span: Span, value: RString) -> Self {
+        Self::String(String::new(span, value))
     }
 
-    fn symbol(span: Span, name: String) -> Self {
-        Self::Symbol { span, name }
+    fn symbol(span: Span, name: RString) -> Self {
+        Self::Symbol(Symbol::new(span, name))
     }
 
     fn vector(span: Span, items: Vec<Self>) -> Self {
@@ -67,7 +191,7 @@ impl ReaderData {
     }
 
     fn fmt_list(f: &mut fmt::Formatter<'_>, _: &Span, items: &[ReaderData]) -> fmt::Result {
-        let mut output: String = "(".to_owned();
+        let mut output: RString = "(".to_owned();
         if !items.is_empty() {
             output.push_str(&items[0].to_string());
             for item in &items[1..] {
@@ -80,7 +204,7 @@ impl ReaderData {
     }
 
     fn fmt_map(f: &mut fmt::Formatter<'_>, _: &Span, items: &[ReaderData]) -> fmt::Result {
-        let mut output: String = "{".to_owned();
+        let mut output: RString = "{".to_owned();
         if !items.is_empty() {
             output.push_str(&items[0].to_string());
             for item in &items[1..] {
@@ -93,7 +217,7 @@ impl ReaderData {
     }
 
     fn fmt_vector(f: &mut fmt::Formatter<'_>, _: &Span, items: &[ReaderData]) -> fmt::Result {
-        let mut output: String = "[".to_owned();
+        let mut output: RString = "[".to_owned();
         if !items.is_empty() {
             output.push_str(&items[0].to_string());
             for item in &items[1..] {
@@ -107,13 +231,13 @@ impl ReaderData {
 
     pub(crate) fn span(&self) -> &Span {
         match self {
-            Self::Integer { span, .. } => span,
-            Self::Keyword { span, .. } => span,
-            Self::LineComment { span, .. } => span,
+            Self::Commented { data, .. } => data.span(),
+            Self::Integer(integer) => integer.span(),
+            Self::Keyword(keyword) => keyword.span(),
             Self::List { span, .. } => span,
             Self::Map { span, .. } => span,
-            Self::String { span, .. } => span,
-            Self::Symbol { span, .. } => span,
+            Self::String(string) => string.span(),
+            Self::Symbol(symbol) => symbol.span(),
             Self::Vector { span, .. } => span,
         }
     }
@@ -122,13 +246,13 @@ impl ReaderData {
 impl fmt::Display for ReaderData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Integer { value, .. } => write!(f, "{}", value),
-            Self::Keyword { name, .. } => write!(f, ":{}", name),
-            Self::LineComment { comment, .. } => write!(f, ";{}", comment),
+            Self::Commented { data, .. } => write!(f, "{}", data),
+            Self::Integer(integer) => write!(f, "{}", integer),
+            Self::Keyword(keyword) => write!(f, "{}", keyword),
             Self::List { span, items } => Self::fmt_list(f, span, items),
             Self::Map { span, items } => Self::fmt_map(f, span, items),
-            Self::String { value, .. } => write!(f, "\"{}\"", value),
-            Self::Symbol { name, .. } => write!(f, "{}", name),
+            Self::String(string) => write!(f, "{}", string),
+            Self::Symbol(symbol) => write!(f, "{}", symbol),
             Self::Vector { span, items } => Self::fmt_vector(f, span, items),
         }
     }
@@ -138,58 +262,81 @@ pub(super) struct Parser;
 
 impl Parser {
     pub(super) fn parse(tokens: &mut Vec<Token>) -> Result<ReaderData> {
+        let mut comments = Vec::new();
         tokens.reverse();
-        match tokens.pop() {
-            Some(Token::StartList { start }) => {
-                tokens.reverse();
-                Self::parse_list(tokens, start)
+        loop {
+            match tokens.pop() {
+                Some(Token::StartList { start }) => {
+                    tokens.reverse();
+                    return Ok(ReaderData::commented(
+                        Self::parse_list(tokens, start)?,
+                        &mut comments,
+                    ));
+                }
+                Some(Token::StartMap { start }) => {
+                    tokens.reverse();
+                    return Ok(ReaderData::commented(
+                        Self::parse_map(tokens, start)?,
+                        &mut comments,
+                    ));
+                }
+                Some(Token::StartVector { start }) => {
+                    tokens.reverse();
+                    return Ok(ReaderData::commented(
+                        Self::parse_vector(tokens, start)?,
+                        &mut comments,
+                    ));
+                }
+                Some(Token::Symbol { name, start, end }) => {
+                    tokens.reverse();
+                    return Ok(ReaderData::commented(
+                        Self::parse_symbol(name, start, end)?,
+                        &mut comments,
+                    ));
+                }
+                Some(Token::Integer { value, start, end }) => {
+                    tokens.reverse();
+                    return Ok(ReaderData::commented(
+                        Self::parse_integer(value, start, end)?,
+                        &mut comments,
+                    ));
+                }
+                Some(Token::Keyword { name, start, end }) => {
+                    tokens.reverse();
+                    return Ok(ReaderData::commented(
+                        Self::parse_keyword(name, start, end)?,
+                        &mut comments,
+                    ));
+                }
+                Some(Token::String { value, start, end }) => {
+                    tokens.reverse();
+                    return Ok(ReaderData::commented(
+                        Self::parse_string(value, start, end)?,
+                        &mut comments,
+                    ));
+                }
+                Some(Token::LineComment {
+                    comment,
+                    start,
+                    end,
+                }) => {
+                    comments.push(Comment::new(Span::new(start, end), comment));
+                }
+                Some(Token::EndList { start }) => {
+                    return Err(format!("ParseError: unexpected ')' at {}", start));
+                }
+                Some(Token::EndMap { start }) => {
+                    return Err(format!("ParseError: unexpected '}}' at {}", start));
+                }
+                Some(Token::EndVector { start }) => {
+                    return Err(format!("ParseError: unexpected ']' at {}", start));
+                }
+                None => return Err("ParseError: empty input".to_owned()),
             }
-            Some(Token::StartMap { start }) => {
-                tokens.reverse();
-                Self::parse_map(tokens, start)
-            }
-            Some(Token::StartVector { start }) => {
-                tokens.reverse();
-                Self::parse_vector(tokens, start)
-            }
-            Some(Token::Symbol { name, start, end }) => {
-                tokens.reverse();
-                Self::parse_symbol(name, start, end)
-            }
-            Some(Token::Integer { value, start, end }) => {
-                tokens.reverse();
-                Self::parse_integer(value, start, end)
-            }
-            Some(Token::Keyword { name, start, end }) => {
-                tokens.reverse();
-                Self::parse_keyword(name, start, end)
-            }
-            Some(Token::String { value, start, end }) => {
-                tokens.reverse();
-                Self::parse_string(value, start, end)
-            }
-            Some(Token::LineComment {
-                comment,
-                start,
-                end,
-            }) => {
-                tokens.reverse();
-                Self::parse_line_comment(comment, start, end)
-            }
-            Some(Token::EndList { start }) => {
-                Err(format!("ParseError: unexpected ')' at {}", start))
-            }
-            Some(Token::EndMap { start }) => {
-                Err(format!("ParseError: unexpected '}}' at {}", start))
-            }
-            Some(Token::EndVector { start }) => {
-                Err(format!("ParseError: unexpected ']' at {}", start))
-            }
-            None => Err("ParseError: empty input".to_owned()),
         }
     }
 
-    fn parse_integer(value: String, start: Location, end: Location) -> Result<ReaderData> {
+    fn parse_integer(value: RString, start: Location, end: Location) -> Result<ReaderData> {
         let span = Span::new(start, end);
         match value.parse() {
             Ok(value) => Ok(ReaderData::integer(span, value)),
@@ -200,15 +347,12 @@ impl Parser {
         }
     }
 
-    fn parse_keyword(name: String, start: Location, end: Location) -> Result<ReaderData> {
+    fn parse_keyword(name: RString, start: Location, end: Location) -> Result<ReaderData> {
         Ok(ReaderData::keyword(Span::new(start, end), name))
     }
 
-    fn parse_line_comment(comment: String, start: Location, end: Location) -> Result<ReaderData> {
-        Ok(ReaderData::line_comment(Span::new(start, end), comment))
-    }
-
     fn parse_list(tokens: &mut Vec<Token>, start: Location) -> Result<ReaderData> {
+        let mut comments = Vec::new();
         let mut items: Vec<ReaderData> = Vec::new();
 
         tokens.reverse();
@@ -245,7 +389,13 @@ impl Parser {
                     items.push(Self::parse_vector(tokens, start)?);
                     tokens.reverse();
                 }
-                Token::LineComment { .. } => {} //TODO: annotate next item with comment
+                Token::LineComment {
+                    comment,
+                    start,
+                    end,
+                } => {
+                    comments.push(Comment::new(Span::new(start, end), comment));
+                }
                 Token::EndMap { start: end } => {
                     return Err(format!(
                         "ParseError: list starting at {} expected ')', found lone '}}' at {}",
@@ -265,27 +415,43 @@ impl Parser {
     }
 
     fn parse_map(tokens: &mut Vec<Token>, start: Location) -> Result<ReaderData> {
+        let mut comments = Vec::new();
         let mut items: Vec<ReaderData> = Vec::new();
 
         tokens.reverse();
         while let Some(token) = tokens.pop() {
             match token {
                 Token::Symbol { name, start, end } => {
-                    items.push(Self::parse_symbol(name, start, end)?)
+                    items.push(ReaderData::commented(
+                        Self::parse_symbol(name, start, end)?,
+                        &mut comments,
+                    ));
                 }
                 Token::Integer { value, start, end } => {
-                    items.push(Self::parse_integer(value, start, end)?)
+                    items.push(ReaderData::commented(
+                        Self::parse_integer(value, start, end)?,
+                        &mut comments,
+                    ));
                 }
                 Token::Keyword { name, start, end } => {
-                    items.push(Self::parse_keyword(name, start, end)?)
+                    items.push(ReaderData::commented(
+                        Self::parse_keyword(name, start, end)?,
+                        &mut comments,
+                    ));
                 }
                 Token::String { value, start, end } => {
-                    items.push(Self::parse_string(value, start, end)?)
+                    items.push(ReaderData::commented(
+                        Self::parse_string(value, start, end)?,
+                        &mut comments,
+                    ));
                 }
                 Token::EndMap { start: end } => {
                     tokens.reverse();
                     if items.len() % 2 == 0 {
-                        return Ok(ReaderData::map(Span::new(start, end), items));
+                        return Ok(ReaderData::commented(
+                            ReaderData::map(Span::new(start, end), items),
+                            &mut comments,
+                        ));
                     } else {
                         let last_key = items.pop().unwrap();
                         return Err(format!("ParseError: map starting at {} expected key value pairs, found lone key {} at {}", start, last_key, last_key.span()));
@@ -293,20 +459,35 @@ impl Parser {
                 }
                 Token::StartList { start } => {
                     tokens.reverse();
-                    items.push(Self::parse_list(tokens, start)?);
+                    items.push(ReaderData::commented(
+                        Self::parse_list(tokens, start)?,
+                        &mut comments,
+                    ));
                     tokens.reverse();
                 }
                 Token::StartMap { start } => {
                     tokens.reverse();
-                    items.push(Self::parse_map(tokens, start)?);
+                    items.push(ReaderData::commented(
+                        Self::parse_map(tokens, start)?,
+                        &mut comments,
+                    ));
                     tokens.reverse();
                 }
                 Token::StartVector { start } => {
                     tokens.reverse();
-                    items.push(Self::parse_vector(tokens, start)?);
+                    items.push(ReaderData::commented(
+                        Self::parse_vector(tokens, start)?,
+                        &mut comments,
+                    ));
                     tokens.reverse();
                 }
-                Token::LineComment { .. } => {} //TODO: annotate next item with comment
+                Token::LineComment {
+                    comment,
+                    start,
+                    end,
+                } => {
+                    comments.push(Comment::new(Span::new(start, end), comment));
+                }
                 Token::EndList { start: end } => {
                     return Err(format!(
                         "ParseError: map starting at {} expected '}}', found lone ')' at {}",
@@ -325,52 +506,83 @@ impl Parser {
         Err("ParseError: expected '}', found end of input".to_owned())
     }
 
-    fn parse_string(value: String, start: Location, end: Location) -> Result<ReaderData> {
+    fn parse_string(value: RString, start: Location, end: Location) -> Result<ReaderData> {
         Ok(ReaderData::string(Span::new(start, end), value))
     }
 
-    fn parse_symbol(name: String, start: Location, end: Location) -> Result<ReaderData> {
+    fn parse_symbol(name: RString, start: Location, end: Location) -> Result<ReaderData> {
         Ok(ReaderData::symbol(Span::new(start, end), name))
     }
 
     fn parse_vector(tokens: &mut Vec<Token>, start: Location) -> Result<ReaderData> {
+        let mut comments = Vec::new();
         let mut items: Vec<ReaderData> = Vec::new();
 
         tokens.reverse();
         while let Some(token) = tokens.pop() {
             match token {
                 Token::Symbol { name, start, end } => {
-                    items.push(Self::parse_symbol(name, start, end)?)
+                    items.push(ReaderData::commented(
+                        Self::parse_symbol(name, start, end)?,
+                        &mut comments,
+                    ));
                 }
                 Token::Integer { value, start, end } => {
-                    items.push(Self::parse_integer(value, start, end)?)
+                    items.push(ReaderData::commented(
+                        Self::parse_integer(value, start, end)?,
+                        &mut comments,
+                    ));
                 }
                 Token::Keyword { name, start, end } => {
-                    items.push(Self::parse_keyword(name, start, end)?)
+                    items.push(ReaderData::commented(
+                        Self::parse_keyword(name, start, end)?,
+                        &mut comments,
+                    ));
                 }
                 Token::String { value, start, end } => {
-                    items.push(Self::parse_string(value, start, end)?)
+                    items.push(ReaderData::commented(
+                        Self::parse_string(value, start, end)?,
+                        &mut comments,
+                    ));
                 }
                 Token::EndVector { start: end } => {
                     tokens.reverse();
-                    return Ok(ReaderData::vector(Span::new(start, end), items));
+                    return Ok(ReaderData::commented(
+                        ReaderData::vector(Span::new(start, end), items),
+                        &mut comments,
+                    ));
                 }
                 Token::StartList { start } => {
                     tokens.reverse();
-                    items.push(Self::parse_list(tokens, start)?);
+                    items.push(ReaderData::commented(
+                        Self::parse_list(tokens, start)?,
+                        &mut comments,
+                    ));
                     tokens.reverse();
                 }
                 Token::StartMap { start } => {
                     tokens.reverse();
-                    items.push(Self::parse_map(tokens, start)?);
+                    items.push(ReaderData::commented(
+                        Self::parse_map(tokens, start)?,
+                        &mut comments,
+                    ));
                     tokens.reverse();
                 }
                 Token::StartVector { start } => {
                     tokens.reverse();
-                    items.push(Self::parse_vector(tokens, start)?);
+                    items.push(ReaderData::commented(
+                        Self::parse_vector(tokens, start)?,
+                        &mut comments,
+                    ));
                     tokens.reverse();
                 }
-                Token::LineComment { .. } => {} //TODO: annotate next item with comment
+                Token::LineComment {
+                    comment,
+                    start,
+                    end,
+                } => {
+                    comments.push(Comment::new(Span::new(start, end), comment));
+                }
                 Token::EndList { start: end } => {
                     return Err(format!(
                         "ParseError: vector starting at {} expected ']', found lone ')' at {}",
@@ -395,29 +607,34 @@ pub(in crate::reader) mod tests {
     use super::super::lexer::tests::{self as token};
     use super::*;
 
+    pub(in crate::reader) fn comment(
+        comment: impl Into<RString>,
+        start: usize,
+        end: usize,
+    ) -> Comment {
+        Comment::new(
+            Span::new(Location::new(start), Location::new(end)),
+            comment.into(),
+        )
+    }
+
+    pub(in crate::reader) fn commented(comments: Vec<Comment>, data: ReaderData) -> ReaderData {
+        let mut comments = comments;
+        ReaderData::commented(data, &mut comments)
+    }
+
     pub(in crate::reader) fn integer(value: i32, start: usize, end: usize) -> ReaderData {
         ReaderData::integer(Span::new(Location::new(start), Location::new(end)), value)
     }
 
     pub(in crate::reader) fn keyword(
-        name: impl Into<String>,
+        name: impl Into<RString>,
         start: usize,
         end: usize,
     ) -> ReaderData {
         ReaderData::keyword(
             Span::new(Location::new(start), Location::new(end)),
             name.into(),
-        )
-    }
-
-    pub(in crate::reader) fn line_comment(
-        comment: impl Into<String>,
-        start: usize,
-        end: usize,
-    ) -> ReaderData {
-        ReaderData::line_comment(
-            Span::new(Location::new(start), Location::new(end)),
-            comment.into(),
         )
     }
 
@@ -430,7 +647,7 @@ pub(in crate::reader) mod tests {
     }
 
     pub(in crate::reader) fn string(
-        value: impl Into<String>,
+        value: impl Into<RString>,
         start: usize,
         end: usize,
     ) -> ReaderData {
@@ -441,7 +658,7 @@ pub(in crate::reader) mod tests {
     }
 
     pub(in crate::reader) fn symbol(
-        name: impl Into<String>,
+        name: impl Into<RString>,
         start: usize,
         end: usize,
     ) -> ReaderData {
@@ -485,28 +702,6 @@ pub(in crate::reader) mod tests {
         assert_eq!(Parser::parse(&mut tokens), Ok(keyword("keywords", 21, 30)));
         assert_eq!(Parser::parse(&mut tokens), Ok(keyword("right", 31, 37)));
         assert_eq!(Parser::parse(&mut tokens), Ok(keyword("now", 39, 43)));
-    }
-
-    #[test]
-    fn test_line_comment() {
-        let mut tokens = vec![token::line_comment("comment", 1, 8)];
-        assert_eq!(
-            Parser::parse(&mut tokens),
-            Ok(line_comment("comment", 1, 8))
-        );
-
-        let mut tokens = vec![
-            token::line_comment(" comment", 1, 9),
-            token::line_comment(" another comment", 13, 29),
-        ];
-        assert_eq!(
-            Parser::parse(&mut tokens),
-            Ok(line_comment(" comment", 1, 9))
-        );
-        assert_eq!(
-            Parser::parse(&mut tokens),
-            Ok(line_comment(" another comment", 13, 29))
-        );
     }
 
     #[test]

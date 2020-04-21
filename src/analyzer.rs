@@ -1,18 +1,19 @@
-use super::reader::{ReaderData, Span};
+use super::reader::{Integer, Keyword, ReaderData, Span, String, Symbol};
+use std::string::String as RString;
 
-type Result<T> = std::result::Result<T, String>;
+type Result<T> = std::result::Result<T, RString>;
 
 #[derive(Debug, Eq, Hash, PartialEq)]
 enum Ast {
     //special forms + literals + calls
     Call {
         span: Span,
-        operator: String,
+        operator: Symbol,
         operands: Vec<Self>,
     },
     Def {
         span: Span,
-        name: String,
+        name: Symbol,
         value: Option<Box<Self>>,
     },
     Do {
@@ -30,14 +31,8 @@ enum Ast {
         then: Box<Self>,
         else_: Option<Box<Self>>,
     },
-    Integer {
-        span: Span,
-        value: i32,
-    },
-    Keyword {
-        span: Span,
-        name: String,
-    },
+    Integer(Integer),
+    Keyword(Keyword),
     Let {
         span: Span,
         bindings: Vec<(Self, Self)>,
@@ -47,14 +42,8 @@ enum Ast {
         span: Span,
         entries: Vec<(Self, Self)>,
     },
-    String {
-        span: Span,
-        value: String,
-    },
-    Symbol {
-        span: Span,
-        name: String,
-    },
+    String(String),
+    Symbol(Symbol),
     Vector {
         span: Span,
         items: Vec<Self>,
@@ -62,7 +51,7 @@ enum Ast {
 }
 
 impl Ast {
-    fn call(span: Span, operator: String, operands: Vec<Self>) -> Self {
+    fn call(span: Span, operator: Symbol, operands: Vec<Self>) -> Self {
         Self::Call {
             span,
             operator,
@@ -70,7 +59,7 @@ impl Ast {
         }
     }
 
-    fn def(span: Span, name: String, value: Option<Ast>) -> Self {
+    fn def(span: Span, name: Symbol, value: Option<Ast>) -> Self {
         Self::Def {
             span,
             name,
@@ -95,12 +84,12 @@ impl Ast {
         }
     }
 
-    fn integer(span: Span, value: i32) -> Self {
-        Self::Integer { span, value }
+    fn integer(integer: Integer) -> Self {
+        Self::Integer(integer)
     }
 
-    fn keyword(span: Span, name: String) -> Self {
-        Self::Keyword { span, name }
+    fn keyword(keyword: Keyword) -> Self {
+        Self::Keyword(keyword)
     }
 
     fn let_(span: Span, bindings: Vec<(Self, Self)>, body: Vec<Self>) -> Self {
@@ -115,16 +104,18 @@ impl Ast {
         Self::Map { span, entries }
     }
 
-    fn string(span: Span, value: String) -> Self {
-        Self::String { span, value }
-    }
-
-    fn symbol(span: Span, name: String) -> Self {
-        Self::Symbol { span, name }
+    fn string(string: String) -> Self {
+        Self::String(string)
     }
 
     fn vector(span: Span, items: Vec<Self>) -> Self {
         Self::Vector { span, items }
+    }
+}
+
+impl From<Symbol> for Ast {
+    fn from(symbol: Symbol) -> Self {
+        Self::Symbol(symbol)
     }
 }
 
@@ -133,28 +124,26 @@ struct Analyzer;
 impl Analyzer {
     fn analyze(data: ReaderData) -> Result<Ast> {
         match data {
-            ReaderData::Integer { span, value } => Ok(Ast::integer(span, value)),
-            ReaderData::Keyword { span, name } => Ok(Ast::keyword(span, name)),
-            ReaderData::LineComment { .. } => {
-                unimplemented!("TODO: ReaderData should not contains standalone comments")
-            }
+            ReaderData::Commented { data, .. } => Self::analyze(*data),
+            ReaderData::Integer(integer) => Ok(Ast::integer(integer)),
+            ReaderData::Keyword(keyword) => Ok(Ast::keyword(keyword)),
             ReaderData::List { span, items } => Self::analyze_list(span, items),
             ReaderData::Map { span, items } => Self::analyze_map(span, items),
-            ReaderData::String { span, value } => Ok(Ast::string(span, value)),
-            ReaderData::Symbol { span, name } => Self::analyze_symbol(span, name),
+            ReaderData::String(string) => Ok(Ast::string(string)),
+            ReaderData::Symbol(symbol) => Self::analyze_symbol(symbol),
             ReaderData::Vector { span, items } => Self::analyze_vector(span, items),
         }
     }
 
-    fn analyze_symbol(span: Span, name: String) -> Result<Ast> {
-        Ok(Ast::symbol(span, name))
+    fn analyze_symbol(symbol: Symbol) -> Result<Ast> {
+        Ok(symbol.into())
     }
 
     fn analyze_list(span: Span, items: Vec<ReaderData>) -> Result<Ast> {
         let mut items = items;
         items.reverse();
         match items.pop() {
-            Some(ReaderData::Symbol { name, .. }) => match name.as_ref() {
+            Some(ReaderData::Symbol(symbol)) => match symbol.name() {
                 "def" => {
                     items.reverse();
                     Self::analyze_def(span, items)
@@ -177,7 +166,7 @@ impl Analyzer {
                 }
                 _ => {
                     items.reverse();
-                    Self::analyze_call(span, name, items)
+                    Self::analyze_call(span, symbol, items)
                 }
             },
             Some(data) => Err(format!(
@@ -209,7 +198,7 @@ impl Analyzer {
         Ok(Ast::vector(span, items?))
     }
 
-    fn analyze_call(span: Span, name: String, operands: Vec<ReaderData>) -> Result<Ast> {
+    fn analyze_call(span: Span, name: Symbol, operands: Vec<ReaderData>) -> Result<Ast> {
         let operands: Result<Vec<_>> = operands.into_iter().map(Self::analyze).collect();
         Ok(Ast::call(span, name, operands?))
     }
@@ -218,7 +207,7 @@ impl Analyzer {
         let mut forms = forms;
         forms.reverse();
         match forms.pop() {
-            Some(ReaderData::Symbol { name, .. }) => match forms.pop().map(Self::analyze) {
+            Some(ReaderData::Symbol(name)) => match forms.pop().map(Self::analyze) {
                 Some(Ok(value)) => {
                     forms.reverse();
                     Ok(Ast::def(span, name, Some(value)))
@@ -326,18 +315,18 @@ mod tests {
     use super::*;
     use crate::reader::{Location, Reader};
 
-    fn call(operator: impl Into<String>, operands: Vec<Ast>, start: usize, end: usize) -> Ast {
+    fn call(operator: Symbol, operands: Vec<Ast>, start: usize, end: usize) -> Ast {
         Ast::call(
             Span::new(Location::new(start), Location::new(end)),
-            operator.into(),
+            operator,
             operands,
         )
     }
 
-    fn def(name: impl Into<String>, value: Option<Ast>, start: usize, end: usize) -> Ast {
+    fn def(name: Symbol, value: Option<Ast>, start: usize, end: usize) -> Ast {
         Ast::def(
             Span::new(Location::new(start), Location::new(end)),
-            name.into(),
+            name,
             value,
         )
     }
@@ -364,14 +353,17 @@ mod tests {
     }
 
     fn integer(value: i32, start: usize, end: usize) -> Ast {
-        Ast::integer(Span::new(Location::new(start), Location::new(end)), value)
+        Ast::integer(Integer::new(
+            Span::new(Location::new(start), Location::new(end)),
+            value,
+        ))
     }
 
-    fn keyword(name: impl Into<String>, start: usize, end: usize) -> Ast {
-        Ast::keyword(
+    fn keyword(name: impl Into<RString>, start: usize, end: usize) -> Ast {
+        Ast::keyword(Keyword::new(
             Span::new(Location::new(start), Location::new(end)),
             name.into(),
-        )
+        ))
     }
 
     fn let_(bindings: Vec<(Ast, Ast)>, body: Vec<Ast>, start: usize, end: usize) -> Ast {
@@ -386,15 +378,15 @@ mod tests {
         Ast::map(Span::new(Location::new(start), Location::new(end)), entries)
     }
 
-    fn string(value: impl Into<String>, start: usize, end: usize) -> Ast {
-        Ast::string(
+    fn string(value: impl Into<RString>, start: usize, end: usize) -> Ast {
+        Ast::string(String::new(
             Span::new(Location::new(start), Location::new(end)),
             value.into(),
-        )
+        ))
     }
 
-    fn symbol(name: impl Into<String>, start: usize, end: usize) -> Ast {
-        Ast::symbol(
+    fn symbol(name: impl Into<RString>, start: usize, end: usize) -> Symbol {
+        Symbol::new(
             Span::new(Location::new(start), Location::new(end)),
             name.into(),
         )
@@ -412,7 +404,7 @@ mod tests {
         assert_eq!(
             results,
             Ok(vec![call(
-                "find",
+                symbol("find", 1, 5),
                 vec![
                     map(
                         vec![
@@ -437,7 +429,12 @@ mod tests {
 
         assert_eq!(
             results,
-            Ok(vec![def("project", Some(string("claire", 13, 21)), 0, 21)])
+            Ok(vec![def(
+                symbol("project", 5, 12),
+                Some(string("claire", 13, 21)),
+                0,
+                21
+            )])
         );
     }
 
@@ -450,9 +447,9 @@ mod tests {
             results,
             Ok(vec![do_(
                 vec![
-                    call("step-1", Vec::new(), 4, 11),
-                    call("step-2", Vec::new(), 13, 20),
-                    call("step-3", Vec::new(), 22, 29),
+                    call(symbol("step-1", 5, 11), Vec::new(), 4, 11),
+                    call(symbol("step-2", 14, 20), Vec::new(), 13, 20),
+                    call(symbol("step-3", 23, 29), Vec::new(), 22, 29),
                 ],
                 0,
                 30
@@ -469,15 +466,15 @@ mod tests {
         assert_eq!(
             results,
             Ok(vec![call(
-                "apply",
+                symbol("apply", 1, 6),
                 vec![
                     fn_(
-                        vec![symbol("name", 12, 16)],
+                        vec![symbol("name", 12, 16).into()],
                         vec![call(
-                            "str",
+                            symbol("str", 19, 22),
                             vec![
                                 string("Hello, ", 23, 32),
-                                symbol("name", 33, 37),
+                                symbol("name", 33, 37).into(),
                                 string("!", 38, 41),
                             ],
                             18,
@@ -502,7 +499,12 @@ mod tests {
         assert_eq!(
             results,
             Ok(vec![if_(
-                call("mark", vec![symbol("answer", 10, 16)], 4, 16),
+                call(
+                    symbol("mark", 5, 9),
+                    vec![symbol("answer", 10, 16).into()],
+                    4,
+                    16
+                ),
                 keyword("correct", 18, 26),
                 Some(keyword("wrong", 27, 33)),
                 0,
@@ -536,15 +538,15 @@ mod tests {
             results,
             Ok(vec![let_(
                 vec![
-                    (symbol("x", 6, 7), integer(1, 8, 9)),
-                    (symbol("y", 10, 11), integer(2, 12, 13)),
-                    (symbol("z", 14, 15), integer(3, 16, 17)),
+                    (symbol("x", 6, 7).into(), integer(1, 8, 9)),
+                    (symbol("y", 10, 11).into(), integer(2, 12, 13)),
+                    (symbol("z", 14, 15).into(), integer(3, 16, 17)),
                 ],
                 vec![vector(
                     vec![
-                        symbol("x", 20, 21),
-                        symbol("y", 22, 23),
-                        symbol("z", 24, 25)
+                        symbol("x", 20, 21).into(),
+                        symbol("y", 22, 23).into(),
+                        symbol("z", 24, 25).into(),
                     ],
                     19,
                     25
@@ -563,7 +565,7 @@ mod tests {
         assert_eq!(
             results,
             Ok(vec![call(
-                "merge",
+                symbol("merge", 1, 6),
                 vec![
                     map(
                         vec![
@@ -601,7 +603,7 @@ mod tests {
         let data = Reader::from_str("symbol").unwrap();
         let results: Result<Vec<_>> = data.into_iter().map(Analyzer::analyze).collect();
 
-        assert_eq!(results, Ok(vec![symbol("symbol", 0, 6)]));
+        assert_eq!(results, Ok(vec![symbol("symbol", 0, 6).into()]));
     }
 
     #[test]

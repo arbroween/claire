@@ -1,12 +1,13 @@
 use self::lexer::Lexer;
 pub(crate) use self::lexer::Location;
 use self::parser::Parser;
-pub(crate) use self::parser::{ReaderData, Span};
+pub(crate) use self::parser::{Integer, Keyword, ReaderData, Span, String, Symbol};
+use std::string::String as RString;
 
 mod lexer;
 mod parser;
 
-type Result<T> = std::result::Result<T, String>;
+type Result<T> = std::result::Result<T, RString>;
 
 pub(crate) struct Reader;
 
@@ -67,13 +68,15 @@ mod tests {
                             []))))
         ";
 
-        let result = vec![
-            parser::line_comment(" given a vector of coefficients,", 13, 46),
-            parser::line_comment(
-                " find the square roots of the corresponding quadratic equation",
-                59,
-                122,
-            ),
+        let result = vec![parser::commented(
+            vec![
+                parser::comment(" given a vector of coefficients,", 13, 46),
+                parser::comment(
+                    " find the square roots of the corresponding quadratic equation",
+                    59,
+                    122,
+                ),
+            ],
             parser::list(
                 vec![
                     parser::symbol("defn", 136, 140),
@@ -288,7 +291,7 @@ mod tests {
                 135,
                 753,
             ),
-        ];
+        )];
 
         assert_eq!(Reader::from_str(src), Ok(result));
     }
