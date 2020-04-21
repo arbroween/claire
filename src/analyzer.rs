@@ -5,10 +5,9 @@ type Result<T> = std::result::Result<T, RString>;
 
 #[derive(Debug, Eq, Hash, PartialEq)]
 enum Ast {
-    //special forms + literals + calls
     Call {
         span: Span,
-        operator: Symbol,
+        operator: Box<Self>,
         operands: Vec<Self>,
     },
     Def {
@@ -51,10 +50,10 @@ enum Ast {
 }
 
 impl Ast {
-    fn call(span: Span, operator: Symbol, operands: Vec<Self>) -> Self {
+    fn call(span: Span, operator: Self, operands: Vec<Self>) -> Self {
         Self::Call {
             span,
-            operator,
+            operator: Box::new(operator),
             operands,
         }
     }
@@ -166,14 +165,13 @@ impl Analyzer {
                 }
                 _ => {
                     items.reverse();
-                    Self::analyze_call(span, symbol, items)
+                    Self::analyze_call(span, ReaderData::Symbol(symbol), items)
                 }
             },
-            Some(data) => Err(format!(
-                "AnalyzerError: unexpected operator '{}' at {}",
-                data,
-                data.span()
-            )),
+            Some(operator) => {
+                items.reverse();
+                Self::analyze_call(span, operator, items)
+            }
             None => {
                 unimplemented!("AnalyzerError: lists literals and empty lists are not implemented")
             }
@@ -198,9 +196,9 @@ impl Analyzer {
         Ok(Ast::vector(span, items?))
     }
 
-    fn analyze_call(span: Span, name: Symbol, operands: Vec<ReaderData>) -> Result<Ast> {
+    fn analyze_call(span: Span, operator: ReaderData, operands: Vec<ReaderData>) -> Result<Ast> {
         let operands: Result<Vec<_>> = operands.into_iter().map(Self::analyze).collect();
-        Ok(Ast::call(span, name, operands?))
+        Ok(Ast::call(span, Self::analyze(operator)?, operands?))
     }
 
     fn analyze_def(span: Span, forms: Vec<ReaderData>) -> Result<Ast> {
@@ -315,7 +313,7 @@ mod tests {
     use super::*;
     use crate::reader::{Location, Reader};
 
-    fn call(operator: Symbol, operands: Vec<Ast>, start: usize, end: usize) -> Ast {
+    fn call(operator: Ast, operands: Vec<Ast>, start: usize, end: usize) -> Ast {
         Ast::call(
             Span::new(Location::new(start), Location::new(end)),
             operator,
@@ -404,7 +402,7 @@ mod tests {
         assert_eq!(
             results,
             Ok(vec![call(
-                symbol("find", 1, 5),
+                symbol("find", 1, 5).into(),
                 vec![
                     map(
                         vec![
@@ -447,9 +445,9 @@ mod tests {
             results,
             Ok(vec![do_(
                 vec![
-                    call(symbol("step-1", 5, 11), Vec::new(), 4, 11),
-                    call(symbol("step-2", 14, 20), Vec::new(), 13, 20),
-                    call(symbol("step-3", 23, 29), Vec::new(), 22, 29),
+                    call(symbol("step-1", 5, 11).into(), Vec::new(), 4, 11),
+                    call(symbol("step-2", 14, 20).into(), Vec::new(), 13, 20),
+                    call(symbol("step-3", 23, 29).into(), Vec::new(), 22, 29),
                 ],
                 0,
                 30
@@ -466,12 +464,12 @@ mod tests {
         assert_eq!(
             results,
             Ok(vec![call(
-                symbol("apply", 1, 6),
+                symbol("apply", 1, 6).into(),
                 vec![
                     fn_(
                         vec![symbol("name", 12, 16).into()],
                         vec![call(
-                            symbol("str", 19, 22),
+                            symbol("str", 19, 22).into(),
                             vec![
                                 string("Hello, ", 23, 32),
                                 symbol("name", 33, 37).into(),
@@ -500,7 +498,7 @@ mod tests {
             results,
             Ok(vec![if_(
                 call(
-                    symbol("mark", 5, 9),
+                    symbol("mark", 5, 9).into(),
                     vec![symbol("answer", 10, 16).into()],
                     4,
                     16
@@ -565,7 +563,7 @@ mod tests {
         assert_eq!(
             results,
             Ok(vec![call(
-                symbol("merge", 1, 6),
+                symbol("merge", 1, 6).into(),
                 vec![
                     map(
                         vec![
