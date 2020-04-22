@@ -133,31 +133,40 @@ impl Token {
         while current.offset < src.chars().count() {
             let parsed_chars = match parse_whitespace(&src[current.offset..]) {
                 None => match parse_line_comment(&src[current.offset..], &current, &mut tokens) {
-                    None => match parse_open_vector(&src[current.offset..], &current, &mut tokens) {
-                        None => {
-                            match parse_open_paren(&src[current.offset..], &current, &mut tokens) {
-                                None => {
-                                    match parse_atom(&src[current.offset..], &current, &mut tokens)
-                                    {
-                                        None => match parse_close_paren(
+                    None => {
+                        match parse_open_vector(&src[current.offset..], &current, &mut tokens) {
+                            None => {
+                                match parse_open_paren(
+                                    &src[current.offset..],
+                                    &current,
+                                    &mut tokens,
+                                ) {
+                                    None => {
+                                        match parse_atom(
                                             &src[current.offset..],
                                             &current,
                                             &mut tokens,
                                         ) {
-                                            None => panic!(
-                                                "Could not parse {} at {}",
-                                                src, current.offset
-                                            ),
+                                            None => match parse_close_paren(
+                                                &src[current.offset..],
+                                                &current,
+                                                &mut tokens,
+                                            ) {
+                                                None => panic!(
+                                                    "Could not parse {} at {}",
+                                                    src, current.offset
+                                                ),
+                                                Some(n) => n,
+                                            },
                                             Some(n) => n,
-                                        },
-                                        Some(n) => n,
+                                        }
                                     }
+                                    Some(n) => n,
                                 }
-                                Some(n) => n,
                             }
+                            Some(n) => n,
                         }
-                        Some(n) => n,
-                    },
+                    }
                     Some(n) => n,
                 },
                 Some(n) => n,
@@ -182,11 +191,11 @@ fn parse_atom<'src>(src: &'src str, start: &Location, tokens: &mut Vec<Token>) -
         .collect();
     match ident.len() {
         0 => None,
-        len =>  {
-        let mut end = start.clone();
-        end.offset += len;
-        tokens.push(Token::ident(&src[..len], start.clone(), end));
-        Some(len)
+        len => {
+            let mut end = start.clone();
+            end.offset += len;
+            tokens.push(Token::ident(&src[..len], start.clone(), end));
+            Some(len)
         }
     }
 }
@@ -235,7 +244,7 @@ fn parse_whitespace(src: &str) -> Option<usize> {
     let whitespaces: String = src.chars().take_while(|c| c.is_whitespace()).collect();
     match whitespaces.len() {
         0 => None,
-        len => Some(len)
+        len => Some(len),
     }
 }
 
@@ -632,16 +641,16 @@ impl Expr {
             Some(SExpr::Atom { ident: constructor, .. }) => {
                 sexprs.reverse();
                 let mut fields = Vec::with_capacity(sexprs.len());
-                
+
                 for sexpr in sexprs {
                     match sexpr {
                         SExpr::Atom { ident, .. } => {
                             fields.push(ident);
                         }
                         _ => return Err(format!("Invalid record definition: expected the constructor list to only contains identifiers, but found {:?}", sexpr)),
-                    } 
-                }   
-                
+                    }
+                }
+
                 Ok((constructor, fields))
             }
             Some(expr) => Err(format!("Invalid record definition: expected the constructor list to start with the constructor name, but found {:?}", expr)),
@@ -781,9 +790,11 @@ impl fmt::Display for Value {
             Self::Boolean(false) => write!(f, "#f"),
             Self::Boolean(true) => write!(f, "#t"),
             Self::Integer(value) => write!(f, "{}", value),
-            Self::Lambda { params, env: _, body} => {
-                write!(f, "(lambda ({}) {:?})", params.join(" "), *body)
-            }
+            Self::Lambda {
+                params,
+                env: _,
+                body,
+            } => write!(f, "(lambda ({}) {:?})", params.join(" "), *body),
             Self::NativeFn(_) => write!(f, "#<native function>"),
             Self::Null => write!(f, "'()"),
             Self::Vector(elements) => {
@@ -858,34 +869,22 @@ impl Env {
         // boolean
         env.set("#f".to_owned(), Value::FALSE).unwrap();
         env.set("#t".to_owned(), Value::TRUE).unwrap();
-        env.set("and".to_owned(), Value::NativeFn(and))
-            .unwrap();
+        env.set("and".to_owned(), Value::NativeFn(and)).unwrap();
         env.set("boolean?".to_owned(), Value::NativeFn(boolean_qmark))
             .unwrap();
-        env.set("not".to_owned(), Value::NativeFn(not))
-            .unwrap();
-        env.set("or".to_owned(), Value::NativeFn(or))
-            .unwrap();
+        env.set("not".to_owned(), Value::NativeFn(not)).unwrap();
+        env.set("or".to_owned(), Value::NativeFn(or)).unwrap();
 
         // integer
-        env.set("=".to_owned(), Value::NativeFn(eq))
-            .unwrap();
-        env.set("<".to_owned(), Value::NativeFn(lt))
-            .unwrap();
-        env.set(">".to_owned(), Value::NativeFn(gt))
-            .unwrap();
-        env.set("<=".to_owned(), Value::NativeFn(le))
-            .unwrap();
-        env.set(">=".to_owned(), Value::NativeFn(ge))
-            .unwrap();
-        env.set("+".to_owned(), Value::NativeFn(add))
-            .unwrap();
-        env.set("-".to_owned(), Value::NativeFn(sub))
-            .unwrap();
-        env.set("*".to_owned(), Value::NativeFn(mul))
-            .unwrap();
-        env.set("/".to_owned(), Value::NativeFn(div))
-            .unwrap();
+        env.set("=".to_owned(), Value::NativeFn(eq)).unwrap();
+        env.set("<".to_owned(), Value::NativeFn(lt)).unwrap();
+        env.set(">".to_owned(), Value::NativeFn(gt)).unwrap();
+        env.set("<=".to_owned(), Value::NativeFn(le)).unwrap();
+        env.set(">=".to_owned(), Value::NativeFn(ge)).unwrap();
+        env.set("+".to_owned(), Value::NativeFn(add)).unwrap();
+        env.set("-".to_owned(), Value::NativeFn(sub)).unwrap();
+        env.set("*".to_owned(), Value::NativeFn(mul)).unwrap();
+        env.set("/".to_owned(), Value::NativeFn(div)).unwrap();
         env.set("eqv?".to_owned(), Value::NativeFn(eqv_qmark))
             .unwrap();
         env.set("exact?".to_owned(), Value::NativeFn(exact_qmark))
@@ -911,9 +910,7 @@ impl Env {
     fn get(&self, name: &str) -> Option<Value> {
         match self.bindings.borrow().get(name).cloned() {
             value @ Some(_) => value,
-            None => {
-                self.outer.as_deref().and_then(|outer| outer.get(name))
-            }
+            None => self.outer.as_deref().and_then(|outer| outer.get(name)),
         }
     }
 
@@ -944,7 +941,10 @@ impl Interpreter {
                 match exprs.pop() {
                     Some(tail_expr) => {
                         exprs.reverse();
-                        if let Some(err) = exprs.into_iter().find_map(|expr| self.execute(env, expr).err()) {
+                        if let Some(err) = exprs
+                            .into_iter()
+                            .find_map(|expr| self.execute(env, expr).err())
+                        {
                             Err(format!(
                                 "Error when evaluating expressions in begin: {}",
                                 err
@@ -953,13 +953,17 @@ impl Interpreter {
                             self.execute(env, tail_expr)
                         }
                     }
-                    None => Ok(Value::NULL)
+                    None => Ok(Value::NULL),
                 }
             }
             Expr::Call {
                 operator, operands, ..
             } => match self.execute(env, *operator) {
-                Ok(Value::Lambda { params, env: lambda_env, body }) => {
+                Ok(Value::Lambda {
+                    params,
+                    env: lambda_env,
+                    body,
+                }) => {
                     if params.len() == operands.len() {
                         let args: Result<Vec<_>> = operands
                             .into_iter()
@@ -977,7 +981,7 @@ impl Interpreter {
                             "function expected {} arguments, got {}",
                             params.len(),
                             operands.len()
-                        ))
+                        ));
                     }
                 }
                 Ok(Value::NativeFn(function)) => {
@@ -987,11 +991,15 @@ impl Interpreter {
                         .collect();
                     return function(args?);
                 }
-                Ok(value) => return Err(format!("Invalid call expression with operator '{}'", value)),
-                Err(err) => return Err(format!(
-                    "Error when evaluating operator in call expression: {}",
-                    err
-                )),
+                Ok(value) => {
+                    return Err(format!("Invalid call expression with operator '{}'", value))
+                }
+                Err(err) => {
+                    return Err(format!(
+                        "Error when evaluating operator in call expression: {}",
+                        err
+                    ))
+                }
             },
             Expr::FnDefinition {
                 ident,
@@ -999,8 +1007,15 @@ impl Interpreter {
                 body,
                 ..
             } => {
-                env.set(ident, Value::Lambda { params, env: env.clone(), body })?;
-                return Ok(Value::NULL)
+                env.set(
+                    ident,
+                    Value::Lambda {
+                        params,
+                        env: env.clone(),
+                        body,
+                    },
+                )?;
+                return Ok(Value::NULL);
             }
             Expr::If {
                 test,
@@ -1008,21 +1023,29 @@ impl Interpreter {
                 alternate,
                 ..
             } => match self.execute(env, *test) {
-                Ok(Value::Boolean(false)) => if let Some(tail_expr) = alternate {
-                    self.execute(env, *tail_expr)
-                } else {
-                    return Ok(Value::NULL)
+                Ok(Value::Boolean(false)) => {
+                    if let Some(tail_expr) = alternate {
+                        self.execute(env, *tail_expr)
+                    } else {
+                        return Ok(Value::NULL);
+                    }
                 }
-                Ok(_) => {
-                    self.execute(env, *consequent)
+                Ok(_) => self.execute(env, *consequent),
+                Err(err) => {
+                    return Err(format!(
+                        "Error when evaluating test in if expression: {}",
+                        err,
+                    ))
                 }
-                Err(err) => return Err(format!(
-                    "Error when evaluating test in if expression: {}",
-                    err,
-                )),
             },
             Expr::Integer { value, .. } => return Ok(Value::Integer(value)),
-            Expr::Lambda { params, body, .. } => return Ok(Value::Lambda { params, env: env.clone(), body }),
+            Expr::Lambda { params, body, .. } => {
+                return Ok(Value::Lambda {
+                    params,
+                    env: env.clone(),
+                    body,
+                })
+            }
             Expr::Null { .. } => return Ok(Value::NULL),
             Expr::RecordDefinition { .. } => return Ok(Value::NULL),
             Expr::Var { ident, .. } => match env.get(&ident) {
@@ -1032,15 +1055,17 @@ impl Interpreter {
             Expr::VarDefinition { ident, value, .. } => {
                 let value = self.execute(env, *value)?;
                 env.set(ident, value)?;
-                return Ok(Value::NULL)
+                return Ok(Value::NULL);
             }
             Expr::Vector { exprs, .. } => {
-                let elements: Result<Vec<_>> =
-                    exprs.into_iter().map(|expr| self.execute(env, expr)).collect();
-                return Ok(Value::Vector(elements?))
+                let elements: Result<Vec<_>> = exprs
+                    .into_iter()
+                    .map(|expr| self.execute(env, expr))
+                    .collect();
+                return Ok(Value::Vector(elements?));
             }
         }
-}
+    }
 }
 
 // boolean
@@ -1074,7 +1099,7 @@ fn and(args: Vec<Value>) -> Result<Value> {
                 Ok(Value::FALSE)
             }
         }
-        None => Ok(Value::FALSE)
+        None => Ok(Value::FALSE),
     }
 }
 
@@ -1104,7 +1129,7 @@ fn or(args: Vec<Value>) -> Result<Value> {
                 Ok(tail_expr)
             }
         }
-        None => Ok(Value::FALSE)
+        None => Ok(Value::FALSE),
     }
 }
 
